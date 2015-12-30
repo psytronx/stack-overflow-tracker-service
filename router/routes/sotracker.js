@@ -12,7 +12,7 @@ router.get('/pages', function(req, res){
 
     const login = req.query['login']; // Todo - Use basic auth field instead
 
-    const prFetchUserId = Models.User.findOne({login:'psytronx'}).then(filterId);
+    const prFetchUserId = Models.User.findOne({login:login}).then(filterId); // Todo - if user not found, generate proper error response
 
     const prShowPages = prFetchUserId
         .then(showPagesViewedForUser)
