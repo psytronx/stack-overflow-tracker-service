@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+global.__base = __dirname + '/../';
+
 /**
  * Module dependencies.
  */
@@ -7,6 +9,7 @@
 var app = require('../app');
 var debug = require('debug')('stack-overflow-tracker-chrome-service:server');
 var http = require('http');
+var mongoose = require('mongoose');
 
 /**
  * Get port from environment and store in Express.
@@ -25,9 +28,24 @@ var server = http.createServer(app);
  * Listen on provided port, on all network interfaces.
  */
 
-server.listen(port);
 server.on('error', onError);
 server.on('listening', onListening);
+
+initMongooseConnection()
+    .on('error', console.error.bind(console, 'connection error:'))
+    .on('disconnected', initMongooseConnection)
+    .once('open', listen);
+
+function listen(){
+  server.listen(port);
+}
+
+function initMongooseConnection(){
+  var db = 'mongodb://localhost/stackOverflowWatch', // todo Use config
+      options = { server: { socketOptions: { keepAlive: 1 } } }; // todo Use config
+  mongoose.Promise = global.Promise;
+  return mongoose.connect(db, options).connection;
+}
 
 /**
  * Normalize a port into a number, string, or false.

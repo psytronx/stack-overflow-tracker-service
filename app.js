@@ -6,6 +6,7 @@ var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 
 var app = express();
+module.exports = app;
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -52,6 +53,3 @@ app.use(function(err, req, res, next) {
     error: {}
   });
 });
-
-
-module.exports = app;
