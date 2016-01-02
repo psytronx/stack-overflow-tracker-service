@@ -7,56 +7,66 @@ const Models = require(__base + 'lib/models');
 module.exports = router;
 
 // GET sotracker/pages/
-// query parameters: login, q, page, timeAgo ('day', 'week', 'month')
+// query parameters: login, q, start, count, timeAgo ('day', 'week', 'month')
 router.get('/pages', function(req, res){
 
-    const login = req.query['login']; // Todo - Use basic auth field instead
-    const query = req.query['q'];
+    const login = req.query['login'], // Todo - Use basic auth field instead
+        query = req.query['q'],
+        start = parseInt(req.query['start']) || 0,
+        count = parseInt(req.query['count']) || 20;
 
-    const prFetchUserId = Models.User.findOne({login:login}).then(filterId); // Todo - if user not found, generate proper error response
-
+    const prFetchUserId = Models.User.findOne({login:login}).then(prFilterId); // Todo - if user not found, generate proper error response
     var prShowPages;
     if (!query || !/\S/.test(query)) {
         // query is empty or just whitespace
         prShowPages = prFetchUserId
-            .then(getPagesViewedForUser)
+            .then(getPagesViewedForUser.bind(null, start, count))
             .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
             .catch(generateError.bind(null, res));
     } else {
         // query is not empty. Do search.
         prShowPages = prFetchUserId
-            .then(getPagesViewedForUserSearch.bind(null, query))
+            .then(getPagesViewedForUserSearch.bind(null, start, count, query))
             .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
             .catch(generateError.bind(null, res));
     }
 
-    function getPagesViewedForUser(userId){
+    function getPagesViewedForUser(start, count, userId){
 
         console.log('userId: ', userId);
 
-        return Models.View.aggregate([
+        var command = Models.View.aggregate([
             {$match:{user: userId}},
             {$group:{_id:"$page", views:{$sum:1}}},
             {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}}
-        ]).exec();
+        ]).limit(count);
+
+        if (start) command = command.skip(start);
+
+        return command.exec();
 
         // Todo - Implement timeAgo
-        // Todo - Implement Pagination
 
     }
 
-    function getPagesViewedForUserSearch(query, userId){
+    function getPagesViewedForUserSearch(start, count, query, userId){
 
         console.log('query: ', query);
 
-        return Models.Page
+        var command = Models.Page
             .find({$text: {$search: query}})
-            .exec()
-            .then(getViewCountsForPage);
+            .limit(count);
 
-        function getViewCountsForPage(pages){
+        if (start) command = command.skip(start);
+
+        return command
+            .exec()
+            .then(getViewsPerPage);
+
+        // Adds views field to each page
+        function getViewsPerPage(pages){
 
             var prViewCounts = pages.map(function getViewCount (page){
                     return Models.View.aggregate([
@@ -115,7 +125,7 @@ router.post('/views', function(req, res){
         console.log('body: ', body);
 
         const login = req.query['login']; // Todo - Use basic auth field instead
-        const prFetchUserId = Models.User.findOne({login:login}).then(filterId); // Todo - if user not found, generate proper error response
+        const prFetchUserId = Models.User.findOne({login:login}).then(prFilterId); // Todo - if user not found, generate proper error response
         const prInsertPageViewToDb = prFetchUserId
             .then(insertPageViewToDb.bind(null, body))
             .then(generateResponse.bind(null, res))
@@ -147,7 +157,7 @@ router.post('/views', function(req, res){
         var query = {path: pageData.path};
         prUpsertPage = Page.findOneAndUpdate(query, pageData, {upsert:true, new:true}).exec();
         return prUpsertPage
-            .then(filterId)
+            .then(prFilterId)
             .then(saveView.bind(null, userId));
 
         function saveView(userId, pageId){
@@ -171,16 +181,17 @@ router.post('/views', function(req, res){
 
 });
 
-function filterId(data){
+// Utility Methods:
 
+// Return the id field of document from MongoDB.
+function prFilterId(data){
     if (!data._id){
         throw new Error('Missing _id!');
     }
     return data._id;
-
 }
 
-// Strip out one layer of array using Array#concat
+// Strip out one layer of array using Array#concat. Useful for concatenating multiple MongoDB resultsets.
 function concatArray(arrayOfArrays){
     return [].concat.apply([], arrayOfArrays);
 }
