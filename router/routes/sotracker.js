@@ -11,13 +11,23 @@ module.exports = router;
 router.get('/pages', function(req, res){
 
     const login = req.query['login']; // Todo - Use basic auth field instead
+    const query = req.query['q'];
 
     const prFetchUserId = Models.User.findOne({login:login}).then(filterId); // Todo - if user not found, generate proper error response
 
-    const prShowPages = prFetchUserId
-        .then(showPagesViewedForUser)
-        .then(generateResponse.bind(null, res))
-        .catch(generateError.bind(null, res));
+    var prShowPages;
+    if (!query || !/\S/.test(query)) {
+        // query is empty or just whitespace
+        prShowPages = prFetchUserId
+            .then(showPagesViewedForUser)
+            .then(generateResponse.bind(null, res))
+            .catch(generateError.bind(null, res));
+    } else {
+        prShowPages = prFetchUserId
+            .then(showPagesViewedForUserSearch.bind(null, query))
+            .then(generateResponse.bind(null, res))
+            .catch(generateError.bind(null, res));
+    }
 
     function showPagesViewedForUser(userId){
 
@@ -25,13 +35,44 @@ router.get('/pages', function(req, res){
 
         return Models.View.aggregate([
             {$match:{user: userId}},
-            {$group:{_id:"$page", total:{$sum:1}}},
+            {$group:{_id:"$page", viewCount:{$sum:1}}},
             {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}}
         ]).exec();
 
-        // Todo - Implement other query params
-        // Todo - Pagination
-        // Todo - Search
+        // Todo - Implement timeAgo
+        // Todo - Implement Pagination
+
+    }
+
+    function showPagesViewedForUserSearch(query, userId){
+
+        console.log('query: ', query);
+
+        return Models.Page
+            .find({$text: {$search: query}})
+            .exec()
+            .then(getViewCountsForPage);
+
+        function getViewCountsForPage(pages){
+
+            var i,
+                tempPromise,
+                prViewCounts = [];
+
+            pages.map(function getViewCount (page){
+                tempPromise = Models.View.aggregate([
+                    {$match:{user: userId, page: page._id}},
+                    {$group:{_id:"$page", viewCount:{$sum:1}}},
+                    {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}}
+                ]).exec();
+                prViewCounts.push(tempPromise);
+            });
+
+            console.log('prViewCounts: ', prViewCounts);
+
+            return Promise.all(prViewCounts);
+
+        }
 
     }
 
@@ -47,7 +88,6 @@ router.get('/pages', function(req, res){
     }
 
 });
-
 
 // POST sotracker/view/
 // query parameters: login
@@ -133,4 +173,19 @@ function filterId(data){
     }
     return data._id;
 
+}
+
+// Returns function that calls console.log for result and then returns result for next step in promise chain.
+function prlog(message){
+    return function(result){
+        console.log(message);
+        return result;
+    };
+}
+// Same as above function, and also appends result to message passed into console.log.
+function prlogResult(message){
+    return function(result){
+        console.log(message, result);
+        return result;
+    };
 }
