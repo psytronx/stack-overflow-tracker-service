@@ -19,23 +19,26 @@ router.get('/pages', function(req, res){
     if (!query || !/\S/.test(query)) {
         // query is empty or just whitespace
         prShowPages = prFetchUserId
-            .then(showPagesViewedForUser)
+            .then(getPagesViewedForUser)
+            .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
             .catch(generateError.bind(null, res));
     } else {
+        // query is not empty. Do search.
         prShowPages = prFetchUserId
-            .then(showPagesViewedForUserSearch.bind(null, query))
+            .then(getPagesViewedForUserSearch.bind(null, query))
+            .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
             .catch(generateError.bind(null, res));
     }
 
-    function showPagesViewedForUser(userId){
+    function getPagesViewedForUser(userId){
 
         console.log('userId: ', userId);
 
         return Models.View.aggregate([
             {$match:{user: userId}},
-            {$group:{_id:"$page", viewCount:{$sum:1}}},
+            {$group:{_id:"$page", views:{$sum:1}}},
             {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}}
         ]).exec();
 
@@ -44,7 +47,7 @@ router.get('/pages', function(req, res){
 
     }
 
-    function showPagesViewedForUserSearch(query, userId){
+    function getPagesViewedForUserSearch(query, userId){
 
         console.log('query: ', query);
 
@@ -55,24 +58,31 @@ router.get('/pages', function(req, res){
 
         function getViewCountsForPage(pages){
 
-            var i,
-                tempPromise,
-                prViewCounts = [];
+            var prViewCounts = pages.map(function getViewCount (page){
+                    return Models.View.aggregate([
+                        {$match:{user: userId, page: page._id}},
+                        {$group:{_id:"$page", views:{$sum:1}}},
+                        {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}}
+                    ]).exec();
+                });
 
-            pages.map(function getViewCount (page){
-                tempPromise = Models.View.aggregate([
-                    {$match:{user: userId, page: page._id}},
-                    {$group:{_id:"$page", viewCount:{$sum:1}}},
-                    {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}}
-                ]).exec();
-                prViewCounts.push(tempPromise);
-            });
-
-            console.log('prViewCounts: ', prViewCounts);
-
-            return Promise.all(prViewCounts);
+            return Promise.all(prViewCounts)
+                    .then(concatArray);
 
         }
+
+    }
+
+    function massageJsonBeforeResponse(pages){
+
+
+        console.log('pages: ', pages);
+
+        return pages.map(function(page){
+            var nicerPage = page.pageData[0];
+            nicerPage.views = page.views;
+            return nicerPage;
+        });
 
     }
 
@@ -173,6 +183,11 @@ function filterId(data){
     }
     return data._id;
 
+}
+
+// Strip out one layer of array using Array#concat
+function concatArray(arrayOfArrays){
+    return [].concat.apply([], arrayOfArrays);
 }
 
 // Returns function that calls console.log for result and then returns result for next step in promise chain.
