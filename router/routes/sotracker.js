@@ -75,9 +75,6 @@ router.get('/pages', function(req, res){
 
     function massageJsonBeforeResponse(pages){
 
-
-        console.log('pages: ', pages);
-
         return pages.map(function(page){
             var nicerPage = page.pageData[0];
             nicerPage.views = page.views;
@@ -154,8 +151,6 @@ router.post('/views', function(req, res){
             .then(saveView.bind(null, userId));
 
         function saveView(userId, pageId){
-
-            console.log("in saveView");
 
             var view = new Models.View({
                 page: pageId,
