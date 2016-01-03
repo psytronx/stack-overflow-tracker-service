@@ -1,5 +1,7 @@
 // Routes for Stack Overflow Tracker API
 
+// Todo - Implement timeAgo
+
 const express = require('express');
 const router = express.Router();
 const Models = require(__base + 'lib/models');
@@ -7,20 +9,33 @@ const Models = require(__base + 'lib/models');
 module.exports = router;
 
 // GET sotracker/pages/
-// query parameters: login, q, start, count, timeAgo ('day', 'week', 'month')
+// query parameters: login, q, sort (only applies for non-search), start, count, timeAgo ('day', 'week', 'month')
 router.get('/pages', function(req, res){
 
     const login = req.query['login'], // Todo - Use basic auth field instead
         query = req.query['q'],
+        sort = req.query['sort'],
         start = parseInt(req.query['start']) || 0,
         count = parseInt(req.query['count']) || 20;
 
-    const prFetchUserId = Models.User.findOne({login:login}).then(prFilterId); // Todo - if user not found, generate proper error response
+    var sortMongoObj;
+    switch(sort){
+        case 'lastViewed':
+            sortMongoObj = {'lastViewed': -1, 'views': -1};
+            break;
+        case 'views':
+            sortMongoObj = {'views': -1, 'lastViewed': -1};
+            break;
+        default:
+            sortMongoObj = {'views': -1, 'lastViewed': -1};
+    }
+
+    const prFetchUserId = Models.User.findOne({login:login}).then(prFilterId); // Todo - if user not found, generate descriptive error response
     var prGetPages;
     if (!query || !/\S/.test(query)) {
         // Query is empty or just whitespace. Do normal find.
         prGetPages = prFetchUserId
-            .then(queryPagesViewedForUser.bind(null, start, count))
+            .then(queryPagesViewedForUser.bind(null, sortMongoObj, start, count))
             .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
             .catch(generateError.bind(null, res));
@@ -33,19 +48,18 @@ router.get('/pages', function(req, res){
             .catch(generateError.bind(null, res));
     }
 
-    function queryPagesViewedForUser(start, count, userId){
+    function queryPagesViewedForUser(sortMongoObj, start, count, userId){
 
         var command = Models.View.aggregate([
             {$match:{user: userId}},
-            {$group:{_id:"$page", views:{$sum:1}}},
-            {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}}
+            {$group:{_id:"$page", views:{$sum:1}, lastViewed:{$max:"$time"}}},
+            {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}},
+            {$sort:sortMongoObj}
         ]).limit(count);
 
         if (start) command = command.skip(start);
 
         return command.exec();
-
-        // Todo - Implement timeAgo
 
     }
 
@@ -69,7 +83,7 @@ router.get('/pages', function(req, res){
             var prViewCounts = pages.map(function getViewCount (page){
                     return Models.View.aggregate([
                         {$match:{user: userId, page: page._id}},
-                        {$group:{_id:"$page", views:{$sum:1}}},
+                        {$group:{_id:"$page", views:{$sum:1}, lastViewed:{$max:"$time"}}}, //There's only one
                         {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}}
                     ]).exec();
                 });
@@ -86,6 +100,7 @@ router.get('/pages', function(req, res){
         return pages.map(function(page){
             var nicerPage = page.pageData[0];
             nicerPage.views = page.views;
+            nicerPage.lastViewed = page.lastViewed;
             return nicerPage;
         });
 
