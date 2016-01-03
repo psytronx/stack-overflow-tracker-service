@@ -20,22 +20,20 @@ router.get('/pages', function(req, res){
     if (!query || !/\S/.test(query)) {
         // Query is empty or just whitespace. Do normal find.
         prGetPages = prFetchUserId
-            .then(getPagesViewedForUser.bind(null, start, count))
+            .then(queryPagesViewedForUser.bind(null, start, count))
             .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
             .catch(generateError.bind(null, res));
     } else {
         // Query is not empty. Do search.
         prGetPages = prFetchUserId
-            .then(getPagesViewedForUserSearch.bind(null, start, count, query))
+            .then(queryPagesViewedForUserSearch.bind(null, start, count, query))
             .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
             .catch(generateError.bind(null, res));
     }
 
-    function getPagesViewedForUser(start, count, userId){
-
-        console.log('userId: ', userId);
+    function queryPagesViewedForUser(start, count, userId){
 
         var command = Models.View.aggregate([
             {$match:{user: userId}},
@@ -51,7 +49,7 @@ router.get('/pages', function(req, res){
 
     }
 
-    function getPagesViewedForUserSearch(start, count, query, userId){
+    function queryPagesViewedForUserSearch(start, count, query, userId){
 
         console.log('query: ', query);
 
