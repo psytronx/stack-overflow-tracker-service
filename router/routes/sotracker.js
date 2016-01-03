@@ -16,17 +16,17 @@ router.get('/pages', function(req, res){
         count = parseInt(req.query['count']) || 20;
 
     const prFetchUserId = Models.User.findOne({login:login}).then(prFilterId); // Todo - if user not found, generate proper error response
-    var prShowPages;
+    var prGetPages;
     if (!query || !/\S/.test(query)) {
-        // query is empty or just whitespace
-        prShowPages = prFetchUserId
+        // Query is empty or just whitespace. Do normal find.
+        prGetPages = prFetchUserId
             .then(getPagesViewedForUser.bind(null, start, count))
             .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
             .catch(generateError.bind(null, res));
     } else {
-        // query is not empty. Do search.
-        prShowPages = prFetchUserId
+        // Query is not empty. Do search.
+        prGetPages = prFetchUserId
             .then(getPagesViewedForUserSearch.bind(null, start, count, query))
             .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
