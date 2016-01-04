@@ -36,6 +36,8 @@ router.get('/pages', function(req, res){
         // Query is empty or just whitespace. Do normal find.
         prGetPages = prFetchUserId
             .then(queryPagesViewedForUser.bind(null, sortMongoObj, start, count))
+            .then(addPageDataToViewAggregates)
+            .then(prlogResult("pages: "))
             .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
             .catch(generateError.bind(null, res));
@@ -43,6 +45,8 @@ router.get('/pages', function(req, res){
         // Query is not empty. Do search.
         prGetPages = prFetchUserId
             .then(queryPagesViewedForUserSearch.bind(null, start, count, query))
+            .then(addPageDataToViewAggregates)
+            .then(prlogResult("pages: "))
             .then(massageJsonBeforeResponse)
             .then(generateResponse.bind(null, res))
             .catch(generateError.bind(null, res));
@@ -53,7 +57,7 @@ router.get('/pages', function(req, res){
         var command = Models.View.aggregate([
             {$match:{user: userId}},
             {$group:{_id:"$page", views:{$sum:1}, lastViewed:{$max:"$time"}}},
-            {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}},
+            //{$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}},
             {$sort:sortMongoObj}
         ]).limit(count);
 
@@ -83,22 +87,39 @@ router.get('/pages', function(req, res){
             var prViewCounts = pages.map(function getViewCount (page){
                     return Models.View.aggregate([
                         {$match:{user: userId, page: page._id}},
-                        {$group:{_id:"$page", views:{$sum:1}, lastViewed:{$max:"$time"}}}, //There's only one
-                        {$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}}
+                        {$group:{_id:"$page", views:{$sum:1}, lastViewed:{$max:"$time"}}}//, //There's only one
+                        //{$lookup:{from:"pages", localField:"_id", foreignField:"_id", as:"pageData"}}
                     ]).exec();
                 });
 
-            return Promise.all(prViewCounts)
-                    .then(concatArray);
+            return Promise
+                .all(prViewCounts)
+                .then(concatArray);
 
         }
 
     }
 
+    function addPageDataToViewAggregates(viewAggs){
+        var prGetPages = viewAggs.map(function getPages(viewAgg, i){
+
+            return Models.Page
+                .findOne({_id:viewAgg._id})
+                .lean()
+                .exec()
+                .then(function(pageData){
+                    viewAgg.pageData = pageData;
+                    return viewAgg;
+                });
+
+        });
+        return Promise.all(prGetPages);
+    }
+
     function massageJsonBeforeResponse(pages){
 
         return pages.map(function(page){
-            var nicerPage = page.pageData[0];
+            var nicerPage = page.pageData;
             nicerPage.views = page.views;
             nicerPage.lastViewed = page.lastViewed;
             return nicerPage;
@@ -107,7 +128,7 @@ router.get('/pages', function(req, res){
     }
 
     function generateResponse(res, data){
-        console.log('views with page info: ', data);
+        //console.log('views with page info: ', data);
         res.json(data);
         // Todo - Add wrapper around data with pagination data
     }
