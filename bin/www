@@ -41,8 +41,8 @@ function listen(){
 }
 
 function initMongooseConnection(){
-  var db = 'mongodb://localhost/stackOverflowWatch', // todo Use config
-      options = { server: { socketOptions: { keepAlive: 1 } } }; // todo Use config
+  var db = process.env.MONGOLAB_URI || 'mongodb://localhost/stackOverflowWatch',
+      options = { server: { socketOptions: { keepAlive: 1 } } };
   mongoose.Promise = global.Promise;
   return mongoose.connect(db, options).connection;
 }
